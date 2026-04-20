@@ -80,10 +80,10 @@ Auto-rewriting resume bullets risks hallucinating experience the user does not h
 
 | Source | API | Free Tier | What it provides |
 |--------|-----|-----------|-----------------|
-| Tavily | REST | 1,000 searches/month | Real-time job search across all major boards |
-| Adzuna | REST | 200 calls/day | Full job descriptions with salary data |
+| DuckDuckGo Search | `duckduckgo-search` Python library | Unlimited, no API key | Job listings across LinkedIn, Indeed, Wellfound, Greenhouse |
+| Adzuna | REST | 200 calls/day, no credit card | Full job descriptions with salary data |
 
-Tavily is purpose-built for AI agents and returns clean, structured results optimised for LLM consumption — no HTML scraping, no rate-limit evasion, no ToS violations.
+No credit card required for any data source. DuckDuckGo search requires no account or API key — just install the Python library.
 
 ## Tech Stack
 
@@ -93,7 +93,7 @@ Tavily is purpose-built for AI agents and returns clean, structured results opti
 | State management | GraphState TypedDict + Pydantic schemas |
 | LLM | Groq (LLaMA 3.3 70B) — free |
 | Structured output | `.with_structured_output()` on all agents |
-| Job search | Tavily API + Adzuna API — free tier |
+| Job search | DuckDuckGo Search (no key) + Adzuna API (free, no CC) |
 | Resume input | Plain text paste |
 | Report output | Markdown + PDF (fpdf2) |
 | Persistence | JSON application tracker |
@@ -137,9 +137,8 @@ pip install -r requirements.txt
 Set the following environment variables (or add as HF Space secrets):
 
 ```bash
-GROQ_API_KEY=your_groq_api_key          # console.groq.com — free
-TAVILY_API_KEY=your_tavily_api_key      # app.tavily.com — free 1000/month
-ADZUNA_APP_ID=your_adzuna_app_id        # developer.adzuna.com — free
+GROQ_API_KEY=your_groq_api_key          # console.groq.com — free, no credit card
+ADZUNA_APP_ID=your_adzuna_app_id        # developer.adzuna.com — free, no credit card
 ADZUNA_APP_KEY=your_adzuna_app_key
 LANGSMITH_API_KEY=your_langsmith_key    # optional — smith.langchain.com
 ```

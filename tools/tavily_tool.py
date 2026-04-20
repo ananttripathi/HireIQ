@@ -1,27 +1,21 @@
-import os
-import requests
 from graph.state import JobListing
 
-TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY", "")
-TAVILY_URL = "https://api.tavily.com/search"
+try:
+    from duckduckgo_search import DDGS
+    _DDGS_AVAILABLE = True
+except ImportError:
+    _DDGS_AVAILABLE = False
 
 
 def fetch_tavily_jobs(query: str, max_results: int = 20) -> list[JobListing]:
-    if not TAVILY_API_KEY:
+    if not _DDGS_AVAILABLE:
         return []
 
-    payload = {
-        "api_key": TAVILY_API_KEY,
-        "query": f"job listing {query}",
-        "search_depth": "advanced",
-        "max_results": max_results,
-        "include_answer": False,
-    }
+    search_query = f"{query} job opening site:linkedin.com OR site:indeed.com OR site:wellfound.com OR site:greenhouse.io"
 
     try:
-        resp = requests.post(TAVILY_URL, json=payload, timeout=15)
-        resp.raise_for_status()
-        results = resp.json().get("results", [])
+        with DDGS() as ddgs:
+            results = list(ddgs.text(search_query, max_results=max_results))
     except Exception:
         return []
 
@@ -29,10 +23,10 @@ def fetch_tavily_jobs(query: str, max_results: int = 20) -> list[JobListing]:
     for r in results:
         jobs.append(JobListing(
             title=r.get("title", "Unknown Role"),
-            company=r.get("domain", "Unknown Company"),
+            company=r.get("source", "Unknown Company"),
             location="Not specified",
-            description=r.get("content", ""),
-            url=r.get("url", ""),
-            source="tavily",
+            description=r.get("body", ""),
+            url=r.get("href", ""),
+            source="duckduckgo",
         ))
     return jobs

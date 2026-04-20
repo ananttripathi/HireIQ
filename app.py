@@ -11,7 +11,7 @@ Paste your resume, enter a job search query, and let HireIQ do the work.
 3. Remaining roles are scored 1-10 against your profile with reasoning
 4. Select a role to generate a cover letter and ATS keyword gap analysis
 
-**Free APIs used:** Groq (LLaMA 3.3 70B) · Tavily · Adzuna
+**Free, no credit card:** Groq (LLaMA 3.3 70B) · DuckDuckGo Search · Adzuna
 """
 
 
