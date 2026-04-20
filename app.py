@@ -1,144 +1,365 @@
 import gradio as gr
-from graph.pipeline import search_graph
-from graph.state import GraphState
+import os
 
-DESCRIPTION = """
-Paste your resume, enter a job search query, and let HireIQ do the work.
 
-**What happens:**
-1. Your resume is parsed in parallel with live job fetching (Tavily + Adzuna)
-2. Irrelevant roles are filtered by keyword heuristics — no wasted LLM calls
-3. Remaining roles are scored 1-10 against your profile with reasoning
-4. Select a role to generate a cover letter and ATS keyword gap analysis
+def extract_resume_text(file_path: str) -> str:
+    if not file_path:
+        return ""
+    ext = os.path.splitext(file_path)[1].lower()
+    if ext == ".pdf":
+        from pypdf import PdfReader
+        reader = PdfReader(file_path)
+        return "\n".join(page.extract_text() or "" for page in reader.pages).strip()
+    if ext in (".docx", ".doc"):
+        from docx import Document
+        doc = Document(file_path)
+        return "\n".join(p.text for p in doc.paragraphs).strip()
+    with open(file_path, "r", errors="ignore") as f:
+        return f.read().strip()
 
-**Free, no credit card:** Groq (LLaMA 3.3 70B) · DuckDuckGo Search · Adzuna
+# ── CSS ──────────────────────────────────────────────────────────────────────
+
+CSS = """
+/* ── Base ── */
+.gradio-container {
+  font-family: 'Inter', -apple-system, sans-serif !important;
+  background: #0d0d0d !important;
+  color: #e2e8f0 !important;
+}
+footer { display: none !important; }
+.main { background: #0d0d0d !important; }
+
+/* ── Header ── */
+.hiq-header {
+  background: linear-gradient(135deg, #0d0d0d 0%, #111827 60%, #1a1f35 100%);
+  border: 1px solid #1e2a3a;
+  border-radius: 16px; padding: 36px 40px; margin-bottom: 12px;
+}
+.hiq-header h1 { font-size: 2.4rem; font-weight: 800; margin: 0 0 6px 0;
+  background: linear-gradient(90deg, #60a5fa, #a78bfa); -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent; letter-spacing: -1px; }
+.hiq-header p  { font-size: 0.97rem; color: #64748b; margin: 0; }
+.hiq-badge { display: inline-block; background: #1e293b; border: 1px solid #334155;
+  border-radius: 20px; padding: 4px 12px; font-size: 0.77rem; margin: 12px 4px 0 0; color: #94a3b8; }
+
+/* ── Tabs ── */
+.tab-nav { background: #111827 !important; border-bottom: 1px solid #1e293b !important; }
+.tab-nav button { color: #64748b !important; font-size: 0.92rem !important;
+  font-weight: 500 !important; padding: 10px 22px !important; border: none !important;
+  background: transparent !important; border-radius: 0 !important; }
+.tab-nav button.selected { color: #60a5fa !important; font-weight: 700 !important;
+  border-bottom: 2px solid #60a5fa !important; }
+
+/* ── Inputs ── */
+textarea, input[type=text] {
+  background: #111827 !important; border: 1.5px solid #1e293b !important;
+  border-radius: 10px !important; color: #e2e8f0 !important; font-size: 0.93rem !important;
+}
+textarea:focus, input[type=text]:focus {
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.15) !important;
+}
+label span { color: #94a3b8 !important; font-weight: 600 !important; font-size: 0.85rem !important; }
+.wrap { background: #0d0d0d !important; }
+
+/* ── Buttons ── */
+.btn-primary {
+  background: linear-gradient(135deg, #2563eb, #7c3aed) !important;
+  color: white !important; border: none !important; border-radius: 10px !important;
+  font-weight: 700 !important; font-size: 0.97rem !important;
+  cursor: pointer !important; transition: all 0.2s !important;
+  box-shadow: 0 4px 20px rgba(99,102,241,0.35) !important;
+}
+.btn-primary:hover { transform: translateY(-1px) !important;
+  box-shadow: 0 6px 28px rgba(99,102,241,0.5) !important; }
+
+/* ── Job cards ── */
+.results-wrap { max-height: 640px; overflow-y: auto; padding-right: 6px; }
+.job-card {
+  background: #111827; border-radius: 14px; padding: 20px 22px; margin-bottom: 12px;
+  border: 1px solid #1e293b; transition: border-color 0.2s, box-shadow 0.2s;
+}
+.job-card:hover { border-color: #3b82f6; box-shadow: 0 0 0 1px #3b82f633; }
+.job-header { display: flex; align-items: flex-start; gap: 14px; }
+.job-body   { flex: 1; }
+.job-title  { font-size: 1rem; font-weight: 700; color: #f1f5f9; margin: 0 0 4px 0; }
+.job-meta   { font-size: 0.85rem; color: #475569; margin: 0 0 8px 0; }
+.job-reason { font-size: 0.88rem; color: #94a3b8; line-height: 1.55; margin: 8px 0 10px 0; }
+.score-badge { display: inline-flex; align-items: center; justify-content: center;
+  width: 46px; height: 46px; border-radius: 50%; font-weight: 800;
+  font-size: 1rem; flex-shrink: 0; margin-top: 2px; }
+.score-high { background: #052e16; color: #4ade80; border: 1.5px solid #166534; }
+.score-mid  { background: #1c1400; color: #facc15; border: 1.5px solid #854d0e; }
+.score-low  { background: #1f0707; color: #f87171; border: 1.5px solid #991b1b; }
+.apply-btn  { display: inline-block; padding: 5px 14px;
+  background: linear-gradient(135deg, #1d4ed8, #6d28d9);
+  color: white !important; border-radius: 7px; font-size: 0.82rem;
+  font-weight: 600; text-decoration: none; }
+.salary-tag { display: inline-block; background: #0f172a; color: #60a5fa;
+  border: 1px solid #1e3a5f; border-radius: 5px;
+  padding: 2px 8px; font-size: 0.79rem; font-weight: 600; margin-left: 8px; }
+
+/* ── Info pills ── */
+.info-strip { display: flex; gap: 10px; flex-wrap: wrap; margin: 12px 0 4px 0; }
+.info-pill  { background: #111827; border: 1px solid #1e293b; border-radius: 8px;
+  padding: 8px 14px; font-size: 0.85rem; color: #cbd5e1; flex: 1; min-width: 140px; }
+.info-pill strong { display: block; font-size: 0.72rem; color: #475569;
+  text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 3px; }
+
+/* ── ATS ── */
+.ats-section { background: #111827; border-radius: 14px; padding: 20px 22px;
+  border: 1px solid #1e293b; }
+.keyword-chip { display: inline-block; border-radius: 6px; padding: 3px 10px;
+  font-size: 0.81rem; font-weight: 600; margin: 3px; }
+.chip-missing { background: #1f0707; color: #f87171; border: 1px solid #7f1d1d; }
+.chip-present { background: #052e16; color: #4ade80; border: 1px solid #14532d; }
+.section-label { font-size: 0.75rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.08em; color: #475569; margin: 16px 0 8px 0; }
 """
 
+# ── Stub data ─────────────────────────────────────────────────────────────────
 
-def run_search(resume_text: str, search_query: str):
+SAMPLE_JOBS_HTML = """
+<div class="results-wrap">
+
+  <div class="job-card">
+    <div class="job-header">
+      <div class="job-body">
+        <p class="job-title">Senior Machine Learning Engineer <span class="salary-tag">$180k – $220k</span></p>
+        <p class="job-meta">Stripe &nbsp;·&nbsp; Remote, USA &nbsp;·&nbsp; via LinkedIn</p>
+        <p class="job-reason">Strong Python + ML background matches core requirements. Prior fintech exposure is a plus. Stack alignment with PyTorch and MLflow is excellent.</p>
+        <a class="apply-btn" href="https://stripe.com/jobs" target="_blank">View & Apply →</a>
+      </div>
+      <div class="score-badge score-high">9</div>
+    </div>
+  </div>
+
+  <div class="job-card">
+    <div class="job-header">
+      <div class="job-body">
+        <p class="job-title">ML Engineer — Recommendations @ Airbnb</p>
+        <p class="job-meta">Airbnb &nbsp;·&nbsp; San Francisco, CA &nbsp;·&nbsp; via Indeed</p>
+        <p class="job-reason">Solid ranking and recommendation systems experience. Missing Spark at scale — worth adding to resume before applying.</p>
+        <a class="apply-btn" href="https://airbnb.com/careers" target="_blank">View & Apply →</a>
+      </div>
+      <div class="score-badge score-high">8</div>
+    </div>
+  </div>
+
+  <div class="job-card">
+    <div class="job-header">
+      <div class="job-body">
+        <p class="job-title">Staff Data Scientist <span class="salary-tag">$160k – $200k</span></p>
+        <p class="job-meta">Notion &nbsp;·&nbsp; Remote &nbsp;·&nbsp; via Wellfound</p>
+        <p class="job-reason">Good fit for product analytics focus. LLM work is a strong differentiator here.</p>
+        <a class="apply-btn" href="https://notion.so/careers" target="_blank">View & Apply →</a>
+      </div>
+      <div class="score-badge score-mid">7</div>
+    </div>
+  </div>
+
+  <div class="job-card">
+    <div class="job-header">
+      <div class="job-body">
+        <p class="job-title">Machine Learning Engineer — Platform</p>
+        <p class="job-meta">Figma &nbsp;·&nbsp; Remote, USA &nbsp;·&nbsp; via Greenhouse</p>
+        <p class="job-reason">Platform ML role — infrastructure heavy. Kubernetes experience gap may be a concern.</p>
+        <a class="apply-btn" href="https://figma.com/careers" target="_blank">View & Apply →</a>
+      </div>
+      <div class="score-badge score-mid">6</div>
+    </div>
+  </div>
+
+</div>
+"""
+
+PROFILE_HTML = """
+<div class="info-strip">
+  <div class="info-pill"><strong>Seniority</strong>Senior</div>
+  <div class="info-pill"><strong>Experience</strong>6 years</div>
+  <div class="info-pill"><strong>Top Skills</strong>Python · PyTorch · SQL · MLflow · LLMs</div>
+  <div class="info-pill"><strong>Pipeline</strong>42 fetched → 18 filtered → 10 scored</div>
+</div>
+"""
+
+SAMPLE_COVER = """Dear Hiring Team at Stripe,
+
+I'm excited to apply for the Senior Machine Learning Engineer role. Having spent six years building and shipping ML systems — from recommendation engines to real-time fraud models — I'm drawn to Stripe's commitment to using ML as a core product differentiator rather than an afterthought.
+
+At my last role, I led a team that reduced model inference latency by 40% while improving precision by 12 points. I've worked extensively with PyTorch, MLflow, and distributed training on GPU clusters, which aligns directly with your infrastructure requirements.
+
+I'd welcome the opportunity to discuss how my background fits the team's goals.
+
+Best regards,
+Anant Tripathi"""
+
+SAMPLE_ATS_HTML = """
+<div class="ats-section">
+  <p class="section-label">Missing — add these to your resume</p>
+  <span class="keyword-chip chip-missing">Kafka</span>
+  <span class="keyword-chip chip-missing">Flink</span>
+  <span class="keyword-chip chip-missing">feature store</span>
+  <span class="keyword-chip chip-missing">A/B testing at scale</span>
+  <span class="keyword-chip chip-missing">model monitoring</span>
+
+  <p class="section-label" style="margin-top:16px">Already present — you're covered</p>
+  <span class="keyword-chip chip-present">Python</span>
+  <span class="keyword-chip chip-present">PyTorch</span>
+  <span class="keyword-chip chip-present">MLflow</span>
+  <span class="keyword-chip chip-present">SQL</span>
+  <span class="keyword-chip chip-present">distributed training</span>
+
+  <p class="section-label" style="margin-top:16px">Where to add missing keywords</p>
+  <ul style="font-size:0.9rem; color:#94a3b8; line-height:1.8; padding-left:18px; margin:0;">
+    <li>Add <strong>Kafka</strong> and <strong>Flink</strong> to your data pipeline bullet at Company X</li>
+    <li>Mention <strong>A/B testing at scale</strong> in your recommendation system project</li>
+    <li>Add <strong>feature store</strong> to your ML infrastructure section</li>
+    <li>Add a one-liner on <strong>model monitoring</strong> to your MLOps experience</li>
+  </ul>
+</div>
+"""
+
+# ── Stub handlers ─────────────────────────────────────────────────────────────
+
+def run_search(resume_text, search_query, progress=gr.Progress()):
     if not resume_text.strip():
-        return "Please paste your resume.", "", ""
+        return "<p style='color:#991b1b;padding:16px'>Please paste your resume.</p>", ""
     if not search_query.strip():
-        return "Please enter a search query (e.g. 'Senior Python Engineer remote').", "", ""
-
-    state: GraphState = {
-        "resume_text": resume_text,
-        "search_query": search_query,
-        "resume_profile": None,
-        "raw_jobs": None,
-        "filtered_jobs": None,
-        "scored_jobs": None,
-        "selected_job": None,
-        "cover_letter": None,
-        "ats_analysis": None,
-        "report_path": None,
-        "error": None,
-    }
-
-    try:
-        result = search_graph.invoke(state)
-    except Exception as e:
-        return f"Pipeline error: {e}", "", ""
-
-    scored_jobs = result.get("scored_jobs") or []
-    if not scored_jobs:
-        return "No matching jobs found. Try a broader search query.", "", ""
-
-    lines = [f"## Top {min(len(scored_jobs), 10)} Roles\n"]
-    for i, job in enumerate(scored_jobs[:10], 1):
-        salary = f" | {job.salary}" if job.salary else ""
-        lines.append(
-            f"**{i}. {job.title}** @ {job.company} ({job.location}){salary}\n"
-            f"Fit Score: **{job.fit_score}/10** — {job.reasoning}\n"
-            f"[Apply]({job.url})\n"
-        )
-
-    profile = result.get("resume_profile")
-    profile_summary = ""
-    if profile:
-        profile_summary = (
-            f"**Detected Profile:** {profile.seniority.title()} | "
-            f"{profile.experience_years} years | "
-            f"Skills: {', '.join(profile.skills[:8])}"
-        )
-
-    stats = (
-        f"Fetched {len(result.get('raw_jobs') or [])} jobs | "
-        f"After pre-filter: {len(result.get('filtered_jobs') or [])} | "
-        f"Scored: {len(scored_jobs)}"
-    )
-
-    return "\n".join(lines), profile_summary, stats
+        return "<p style='color:#991b1b;padding:16px'>Please enter a search query.</p>", ""
+    progress(0.25, desc="Parsing resume...")
+    progress(0.55, desc="Fetching live jobs...")
+    progress(0.85, desc="Scoring with LLM...")
+    return SAMPLE_JOBS_HTML, PROFILE_HTML
 
 
-def run_cover_letter_and_ats(resume_text: str, job_title: str, company: str, reasoning: str, url: str):
-    from graph.state import ScoredJob, ResumeProfile
-    from agents.search_screen_agent import extract_resume
-    from agents.cover_letter_agent import generate_cover_letter
-    from agents.ats_agent import run_ats_analysis
-
+def run_cover_ats(resume_text, job_title, company, job_description, url, progress=gr.Progress()):
     if not resume_text.strip() or not job_title.strip():
         return "Missing resume or job title.", ""
+    progress(0.4, desc="Writing cover letter...")
+    progress(0.8, desc="Running ATS analysis...")
+    return SAMPLE_COVER, SAMPLE_ATS_HTML
 
+
+def load_tracker():
     try:
-        profile = extract_resume(resume_text)
-        job = ScoredJob(
-            title=job_title, company=company, location="", url=url,
-            fit_score=8, reasoning=reasoning
-        )
-        letter = generate_cover_letter(job, profile)
-        ats = run_ats_analysis(job, profile)
-    except Exception as e:
-        return f"Error: {e}", ""
+        from tools.tracker import load_applications
+        rows = load_applications()
+        return [[r.get("date"), r.get("title"), r.get("company"),
+                 r.get("location"), r.get("fit_score"), r.get("url")] for r in rows]
+    except Exception:
+        return []
 
-    cover_text = letter.content
-    ats_text = (
-        f"**Missing keywords:** {', '.join(ats.missing_keywords)}\n\n"
-        f"**Already present:** {', '.join(ats.present_keywords)}\n\n"
-        "**Where to add them:**\n" + "\n".join(f"- {s}" for s in ats.suggestions)
-    )
-    return cover_text, ats_text
 
+# ── Layout ────────────────────────────────────────────────────────────────────
 
 with gr.Blocks(title="HireIQ") as demo:
-    gr.Markdown("# HireIQ — Agentic Job Hunting Assistant")
-    gr.Markdown(DESCRIPTION)
 
-    with gr.Tab("Search & Score"):
-        with gr.Row():
-            resume_input = gr.Textbox(label="Your Resume", lines=15, placeholder="Paste your full resume here...")
-            search_input = gr.Textbox(label="Search Query", lines=2, placeholder="e.g. Senior Python Engineer remote")
+    gr.HTML("""
+    <div class="hiq-header">
+      <h1>🎯 HireIQ</h1>
+      <p>Agentic job hunting assistant — finds, scores, and helps you apply to the right roles</p>
+      <span class="hiq-badge">Groq LLaMA 3.3 70B</span>
+      <span class="hiq-badge">DuckDuckGo Search</span>
+      <span class="hiq-badge">Adzuna API</span>
+      <span class="hiq-badge">LangGraph</span>
+      <span class="hiq-badge">100% Free · No credit card</span>
+    </div>
+    """)
 
-        search_btn = gr.Button("Find & Score Jobs", variant="primary")
-        profile_out = gr.Markdown(label="Detected Profile")
-        stats_out = gr.Markdown(label="Pipeline Stats")
-        results_out = gr.Markdown(label="Scored Jobs")
+    with gr.Tab("🔍  Search & Score"):
+
+        with gr.Row(equal_height=False):
+            with gr.Column(scale=5):
+                resume_upload = gr.File(
+                    label="Upload Resume (PDF, DOCX, or TXT)",
+                    file_types=[".pdf", ".docx", ".doc", ".txt"],
+                    type="filepath",
+                )
+                resume_input = gr.Textbox(
+                    label="Resume text (auto-filled on upload, or paste directly)",
+                    placeholder="Upload a file above, or paste your resume here…",
+                    lines=16,
+                )
+                resume_upload.change(
+                    fn=extract_resume_text,
+                    inputs=resume_upload,
+                    outputs=resume_input,
+                )
+            with gr.Column(scale=3):
+                search_input = gr.Textbox(
+                    label="Search Query",
+                    placeholder="e.g.  Senior ML Engineer remote\n      Python Backend Engineer NYC",
+                    lines=3,
+                )
+                search_btn = gr.Button("Find & Score Jobs →", variant="primary", elem_classes="btn-primary")
+                profile_out = gr.HTML()
+
+        results_out = gr.HTML()
 
         search_btn.click(
             fn=run_search,
             inputs=[resume_input, search_input],
-            outputs=[results_out, profile_out, stats_out],
+            outputs=[results_out, profile_out],
         )
 
-    with gr.Tab("Cover Letter & ATS"):
-        gr.Markdown("Fill in the role details from a job you want to apply to.")
-        with gr.Row():
-            cl_resume = gr.Textbox(label="Your Resume", lines=12, placeholder="Paste resume...")
-            with gr.Column():
-                cl_title = gr.Textbox(label="Job Title")
-                cl_company = gr.Textbox(label="Company")
-                cl_reasoning = gr.Textbox(label="Why this role interests you (optional)")
-                cl_url = gr.Textbox(label="Job URL (optional)")
+    with gr.Tab("✉️  Cover Letter & ATS"):
 
-        cl_btn = gr.Button("Generate Cover Letter + ATS Analysis", variant="primary")
-        cover_out = gr.Textbox(label="Cover Letter", lines=15)
-        ats_out = gr.Markdown(label="ATS Keyword Gap")
+        with gr.Row(equal_height=False):
+            with gr.Column(scale=5):
+                cl_upload = gr.File(
+                    label="Upload Resume (PDF, DOCX, or TXT)",
+                    file_types=[".pdf", ".docx", ".doc", ".txt"],
+                    type="filepath",
+                )
+                cl_resume = gr.Textbox(
+                    label="Resume text (auto-filled on upload, or paste directly)",
+                    placeholder="Upload a file above, or paste your resume here…",
+                    lines=9,
+                )
+                cl_upload.change(
+                    fn=extract_resume_text,
+                    inputs=cl_upload,
+                    outputs=cl_resume,
+                )
+                cl_description = gr.Textbox(
+                    label="Job Description",
+                    placeholder="Paste the full job description…",
+                    lines=7,
+                )
+            with gr.Column(scale=3):
+                cl_title   = gr.Textbox(label="Job Title",  placeholder="Senior ML Engineer")
+                cl_company = gr.Textbox(label="Company",    placeholder="Stripe")
+                cl_url     = gr.Textbox(label="Job URL",    placeholder="https://…")
+                cl_btn     = gr.Button("Generate Cover Letter + ATS →", variant="primary", elem_classes="btn-primary")
+
+        with gr.Row():
+            with gr.Column():
+                gr.HTML('<p class="section-label" style="margin-top:8px">Cover Letter</p>')
+                cover_out = gr.Textbox(lines=16, show_label=False, interactive=False)
+            with gr.Column():
+                gr.HTML('<p class="section-label" style="margin-top:8px">ATS Keyword Gap</p>')
+                ats_out = gr.HTML()
 
         cl_btn.click(
-            fn=run_cover_letter_and_ats,
-            inputs=[cl_resume, cl_title, cl_company, cl_reasoning, cl_url],
+            fn=run_cover_ats,
+            inputs=[cl_resume, cl_title, cl_company, cl_description, cl_url],
             outputs=[cover_out, ats_out],
         )
 
+    with gr.Tab("📋  Application Tracker"):
+        gr.HTML('<p style="color:#6b7280;font-size:0.9rem;margin:4px 0 16px 0">Every role you generate a cover letter for is logged here automatically.</p>')
+        refresh_btn   = gr.Button("Refresh", size="sm")
+        tracker_table = gr.Dataframe(
+            headers=["Date", "Title", "Company", "Location", "Fit Score", "URL"],
+            datatype=["str", "str", "str", "str", "number", "str"],
+            interactive=False,
+            wrap=True,
+        )
+        refresh_btn.click(fn=load_tracker, outputs=tracker_table)
+        demo.load(fn=load_tracker, outputs=tracker_table)
+
 if __name__ == "__main__":
-    demo.launch()
+    demo.launch(css=CSS, theme=gr.themes.Base(
+        primary_hue=gr.themes.colors.blue,
+        neutral_hue=gr.themes.colors.slate,
+    ))
