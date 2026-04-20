@@ -43,11 +43,13 @@ footer { display: none !important; }
   border-radius: 20px; padding: 4px 12px; font-size: 0.77rem; margin: 12px 4px 0 0; color: #94a3b8; }
 
 /* ── Tabs ── */
-.tab-nav { background: #111827 !important; border-bottom: 1px solid #1e293b !important; }
-.tab-nav button { color: #64748b !important; font-size: 0.92rem !important;
-  font-weight: 500 !important; padding: 10px 22px !important; border: none !important;
-  background: transparent !important; border-radius: 0 !important; }
-.tab-nav button.selected { color: #60a5fa !important; font-weight: 700 !important;
+.tab-header { background: #111827 !important; border-bottom: 1px solid #1e293b !important; }
+.tab-button { color: #64748b !important; font-size: 0.92rem !important;
+  font-weight: 500 !important; padding: 10px 22px !important;
+  background: transparent !important; border: none !important;
+  border-radius: 0 !important; cursor: pointer !important;
+  pointer-events: all !important; }
+.tab-button.selected { color: #60a5fa !important; font-weight: 700 !important;
   border-bottom: 2px solid #60a5fa !important; }
 
 /* ── Inputs ── */
@@ -115,6 +117,109 @@ label span { color: #94a3b8 !important; font-weight: 600 !important; font-size: 
 .chip-present { background: #052e16; color: #4ade80; border: 1px solid #14532d; }
 .section-label { font-size: 0.75rem; font-weight: 700; text-transform: uppercase;
   letter-spacing: 0.08em; color: #475569; margin: 16px 0 8px 0; }
+
+/* ── Cover letter output ── */
+#cover-out textarea {
+  background: #0d1117 !important;
+  border: 1px solid #1e293b !important;
+  border-radius: 12px !important;
+  color: #e2e8f0 !important;
+  font-family: 'Georgia', serif !important;
+  font-size: 0.93rem !important;
+  line-height: 1.7 !important;
+  padding: 16px !important;
+}
+#cover-out textarea:focus {
+  border-color: #3b82f6 !important;
+}
+
+/* ── Output divider ── */
+.output-divider {
+  display: flex; align-items: center; gap: 12px;
+  margin: 20px 0 12px 0;
+}
+.output-divider span {
+  font-size: 0.75rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.1em; color: #334155; white-space: nowrap;
+}
+.output-divider::before, .output-divider::after {
+  content: ""; flex: 1; height: 1px; background: #1e293b;
+}
+
+/* ── ATS empty state ── */
+.ats-empty {
+  background: #111827; border-radius: 12px; border: 1px dashed #1e293b;
+  padding: 32px 20px; text-align: center;
+  color: #334155; font-size: 0.9rem; font-style: italic;
+}
+
+/* ── Tracker ── */
+.tracker-header {
+  background: #111827; border: 1px solid #1e293b;
+  border-radius: 12px; padding: 16px 20px; margin-bottom: 14px;
+}
+.refresh-btn {
+  background: #1e293b !important; color: #94a3b8 !important;
+  border: 1px solid #334155 !important; border-radius: 8px !important;
+  font-size: 0.85rem !important; margin-bottom: 10px !important;
+}
+.refresh-btn:hover { background: #334155 !important; color: #e2e8f0 !important; }
+#tracker-table {
+  border-radius: 12px !important; overflow: hidden !important;
+  border: 1px solid #1e293b !important;
+}
+#tracker-table table { background: #111827 !important; }
+#tracker-table th {
+  background: #0d1117 !important; color: #64748b !important;
+  font-size: 0.78rem !important; text-transform: uppercase !important;
+  letter-spacing: 0.06em !important; border-bottom: 1px solid #1e293b !important;
+  padding: 10px 14px !important;
+}
+#tracker-table td {
+  background: #111827 !important; color: #cbd5e1 !important;
+  border-bottom: 1px solid #1a2332 !important;
+  font-size: 0.88rem !important; padding: 10px 14px !important;
+}
+#tracker-table tr:hover td { background: #0d1f3c !important; }
+
+/* ── File upload drop zone ── */
+#resume-upload, #cl-upload {
+  border: 2px dashed #2563eb !important;
+  border-radius: 12px !important;
+  background: #080f1e !important;
+  transition: border-color 0.2s, background 0.2s !important;
+  padding: 4px !important;
+}
+#resume-upload:hover, #cl-upload:hover {
+  border-color: #60a5fa !important;
+  background: #0d1f3c !important;
+}
+#resume-upload .wrap, #cl-upload .wrap,
+#resume-upload > div, #cl-upload > div {
+  background: transparent !important;
+}
+#resume-upload svg, #cl-upload svg {
+  stroke: #3b82f6 !important;
+  color: #3b82f6 !important;
+  fill: none !important;
+}
+#resume-upload p, #cl-upload p,
+#resume-upload span:not(.svelte-1oa8sb9),
+#cl-upload span:not(.svelte-1oa8sb9) {
+  color: #60a5fa !important;
+}
+#resume-upload button, #cl-upload button {
+  background: #1e3a5f !important;
+  color: #93c5fd !important;
+  border: 1px solid #2563eb !important;
+  border-radius: 8px !important;
+  font-weight: 600 !important;
+  margin-top: 6px !important;
+}
+#resume-upload button:hover, #cl-upload button:hover {
+  background: #2563eb !important;
+  color: white !important;
+}
 """
 
 # ── Stub data ─────────────────────────────────────────────────────────────────
@@ -274,6 +379,7 @@ with gr.Blocks(title="HireIQ") as demo:
                     label="Upload Resume (PDF, DOCX, or TXT)",
                     file_types=[".pdf", ".docx", ".doc", ".txt"],
                     type="filepath",
+                    elem_id="resume-upload",
                 )
                 resume_input = gr.Textbox(
                     label="Resume text (auto-filled on upload, or paste directly)",
@@ -304,41 +410,48 @@ with gr.Blocks(title="HireIQ") as demo:
 
     with gr.Tab("✉️  Cover Letter & ATS"):
 
+        gr.HTML('<p style="color:#64748b;font-size:0.9rem;margin:2px 0 14px 0">Pick a role from the search results (or any job you want) and generate a personalised cover letter + ATS keyword gap analysis.</p>')
+
         with gr.Row(equal_height=False):
             with gr.Column(scale=5):
                 cl_upload = gr.File(
                     label="Upload Resume (PDF, DOCX, or TXT)",
                     file_types=[".pdf", ".docx", ".doc", ".txt"],
                     type="filepath",
+                    elem_id="cl-upload",
                 )
                 cl_resume = gr.Textbox(
                     label="Resume text (auto-filled on upload, or paste directly)",
                     placeholder="Upload a file above, or paste your resume here…",
-                    lines=9,
+                    lines=8,
                 )
-                cl_upload.change(
-                    fn=extract_resume_text,
-                    inputs=cl_upload,
-                    outputs=cl_resume,
-                )
+                cl_upload.change(fn=extract_resume_text, inputs=cl_upload, outputs=cl_resume)
                 cl_description = gr.Textbox(
                     label="Job Description",
-                    placeholder="Paste the full job description…",
+                    placeholder="Paste the full job description here…",
                     lines=7,
                 )
             with gr.Column(scale=3):
-                cl_title   = gr.Textbox(label="Job Title",  placeholder="Senior ML Engineer")
-                cl_company = gr.Textbox(label="Company",    placeholder="Stripe")
+                cl_title   = gr.Textbox(label="Job Title",  placeholder="e.g.  Senior ML Engineer")
+                cl_company = gr.Textbox(label="Company",    placeholder="e.g.  Stripe")
                 cl_url     = gr.Textbox(label="Job URL",    placeholder="https://…")
-                cl_btn     = gr.Button("Generate Cover Letter + ATS →", variant="primary", elem_classes="btn-primary")
+                cl_btn = gr.Button("Generate Cover Letter + ATS →", variant="primary", elem_classes="btn-primary")
 
-        with gr.Row():
-            with gr.Column():
-                gr.HTML('<p class="section-label" style="margin-top:8px">Cover Letter</p>')
-                cover_out = gr.Textbox(lines=16, show_label=False, interactive=False)
-            with gr.Column():
-                gr.HTML('<p class="section-label" style="margin-top:8px">ATS Keyword Gap</p>')
-                ats_out = gr.HTML()
+        gr.HTML('<div class="output-divider"><span>Generated Output</span></div>')
+
+        with gr.Row(equal_height=False):
+            with gr.Column(scale=1):
+                gr.HTML('<p class="section-label">Cover Letter</p>')
+                cover_out = gr.Textbox(
+                    lines=18, show_label=False, interactive=True,
+                    placeholder="Your cover letter will appear here — fully editable before you copy it.",
+                    elem_id="cover-out",
+                )
+            with gr.Column(scale=1):
+                gr.HTML('<p class="section-label">ATS Keyword Gap</p>')
+                ats_out = gr.HTML(
+                    value='<div class="ats-empty">Run the generator to see which keywords you\'re missing.</div>'
+                )
 
         cl_btn.click(
             fn=run_cover_ats,
@@ -347,13 +460,21 @@ with gr.Blocks(title="HireIQ") as demo:
         )
 
     with gr.Tab("📋  Application Tracker"):
-        gr.HTML('<p style="color:#6b7280;font-size:0.9rem;margin:4px 0 16px 0">Every role you generate a cover letter for is logged here automatically.</p>')
-        refresh_btn   = gr.Button("Refresh", size="sm")
+        gr.HTML("""
+        <div class="tracker-header">
+          <div>
+            <h3 style="margin:0 0 4px 0;color:#f1f5f9;font-size:1.1rem;font-weight:700">Application Pipeline</h3>
+            <p style="margin:0;color:#64748b;font-size:0.88rem">Every role you generate a cover letter for is logged here automatically.</p>
+          </div>
+        </div>
+        """)
+        refresh_btn = gr.Button("↻  Refresh", size="sm", elem_classes="refresh-btn")
         tracker_table = gr.Dataframe(
             headers=["Date", "Title", "Company", "Location", "Fit Score", "URL"],
             datatype=["str", "str", "str", "str", "number", "str"],
             interactive=False,
             wrap=True,
+            elem_id="tracker-table",
         )
         refresh_btn.click(fn=load_tracker, outputs=tracker_table)
         demo.load(fn=load_tracker, outputs=tracker_table)
