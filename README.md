@@ -12,55 +12,69 @@ license: mit
 
 # 🎯 HireIQ — Agentic Job Hunting Assistant
 
-HireIQ is a multi-agent AI system that automates the most painful parts of job hunting. Give it your resume and a job search query, and a team of specialised agents will find relevant roles, score them against your profile, tailor your resume, and write personalised cover letters — in under 2 minutes.
+HireIQ is a multi-agent AI system that automates the most painful parts of job hunting. Paste your resume and a search query, and a crew of specialised agents finds relevant roles, scores them against your profile, writes a personalised cover letter, and tells you exactly which keywords to add to pass ATS filters.
 
 ## The Problem
 
 Job hunting is exhausting and repetitive. Senior engineers spend hours:
 - Searching across LinkedIn, Indeed, Wellfound, and company career pages separately
-- Manually tailoring resumes for each role
-- Writing cover letters from scratch
-- Tracking applications with no structure
-- Guessing whether their resume will pass ATS filters
+- Manually writing cover letters from scratch for each role
+- Guessing whether their resume will pass ATS keyword filters
+- Tracking applications with no structure across spreadsheets and browser tabs
 
 ## The Solution
 
-A crew of AI agents that collaborates end-to-end:
+3 focused AI agents that collaborate end-to-end:
 
 ```
-User Input: "Senior ML Engineer roles in Bengaluru, remote-friendly, fintech or pharma"
+User pastes resume + enters search query
         |
         v
-Search Agent       Searches LinkedIn, Indeed, Wellfound via Serper API
+Search + Screen Agent    Fetches jobs via JSearch + Adzuna APIs
+                         Scores each role against your resume (1-10 fit score with reasoning)
         |
         v
-Screening Agent    Scores each role against your resume and preferences
+User selects a role they want to apply for
         |
         v
-Resume Agent       Tailors resume bullets for top matching roles
+Cover Letter Agent       Writes a personalised cover letter using your resume + the full JD
         |
         v
-Cover Letter Agent Writes a personalised cover letter per role
+ATS Agent                Identifies missing keywords from the JD
+                         Suggests exactly where to add them in your resume
+                         (you decide what to change — no hallucinated edits)
         |
         v
-Output: Ranked job list + tailored resume + cover letter ready to send
+Tracker                  Logs the role, fit score, and date to your application pipeline
 ```
 
-## Features
+## Why 3 Agents and Not 5
 
-- Multi-board job search (LinkedIn, Indeed, Wellfound, Google Jobs)
-- Resume-to-job fit scoring with reasoning
-- Automated resume tailoring per role
-- Personalised cover letter generation
-- Clean Gradio UI deployable on Hugging Face Spaces
+The original design had 5 agents including automated resume rewriting. That approach was dropped for two reasons:
+
+1. Auto-rewriting resume bullets risks hallucinating experience you do not have — a recruiter will catch it
+2. 5 sequential LLM calls on a free-tier API (Groq) is slow and hits rate limits fast on a public deployment
+
+The 3-agent design does more with less: job discovery and scoring in a single pass, then cover letter and ATS analysis only for roles the user actually wants to pursue.
+
+## Data Sources
+
+| Source | API | Free Tier | What it provides |
+|--------|-----|-----------|-----------------|
+| JSearch (RapidAPI) | REST | 200 requests/day | Structured jobs from Indeed, LinkedIn, Glassdoor |
+| Adzuna | REST | 200 calls/day | Full job descriptions, salary data |
+
+No scraping. Both are legitimate APIs with structured data including full job descriptions — which is what the cover letter and ATS agents need to work well.
 
 ## Tech Stack
 
 | Component | Technology |
 |-----------|-----------|
-| Agent orchestration | CrewAI |
+| Agent orchestration | LangGraph |
 | LLM | Groq (LLaMA 3.3 70B) — free |
-| Job search | Serper API — free tier |
+| Job search | JSearch API + Adzuna API — free tier |
+| Resume input | Plain text paste (no parsing bugs) |
+| Persistence | JSON application tracker |
 | UI | Gradio |
 | Deployment | Hugging Face Spaces + GitHub Actions |
 
@@ -68,20 +82,20 @@ Output: Ranked job list + tailored resume + cover letter ready to send
 
 ```
 HireIQ/
-├── app.py                  # Gradio UI + agent pipeline entry point
+├── app.py                      # Gradio UI + LangGraph pipeline entry point
 ├── agents/
-│   ├── search_agent.py     # Finds job listings via Serper
-│   ├── screening_agent.py  # Scores roles against user resume
-│   ├── resume_agent.py     # Tailors resume bullets per role
-│   └── cover_letter_agent.py  # Generates personalised cover letters
+│   ├── search_screen_agent.py  # Fetches jobs from APIs, scores vs resume
+│   ├── cover_letter_agent.py   # Generates personalised cover letter
+│   └── ats_agent.py            # Keyword gap analysis vs resume
 ├── tools/
-│   ├── serper_tool.py      # Serper API wrapper for job search
-│   └── resume_parser.py    # Extracts structured data from resume
-├── outputs/                # Generated resumes and cover letters
+│   ├── jsearch_tool.py         # JSearch API wrapper
+│   ├── adzuna_tool.py          # Adzuna API wrapper
+│   └── tracker.py              # JSON application pipeline logger
+├── outputs/                    # Generated cover letters + tracker JSON
 ├── requirements.txt
 └── .github/
     └── workflows/
-        └── deploy-hf.yml   # Auto-deploy to HF Spaces on push
+        └── deploy-hf.yml       # Auto-deploy to HF Spaces on push to main
 ```
 
 ## Setup
@@ -92,24 +106,20 @@ cd HireIQ
 pip install -r requirements.txt
 ```
 
-Set the following environment variables:
+Set the following environment variables (or add as HF Space secrets):
 
 ```bash
-GROQ_API_KEY=your_groq_api_key
-SERPER_API_KEY=your_serper_api_key
+GROQ_API_KEY=your_groq_api_key        # console.groq.com — free
+JSEARCH_API_KEY=your_jsearch_key      # rapidapi.com/letscrape-6bfcf/api/jsearch — free tier
+ADZUNA_APP_ID=your_adzuna_app_id      # developer.adzuna.com — free
+ADZUNA_APP_KEY=your_adzuna_app_key
 ```
-
-Get free API keys:
-- Groq: https://console.groq.com
-- Serper: https://serper.dev (free tier: 2,500 searches/month)
 
 ## Deploy to Hugging Face Spaces
 
 1. Create a new Gradio Space at huggingface.co
-2. Push this repo to the Space
-3. Add `GROQ_API_KEY` and `SERPER_API_KEY` as Space secrets
-
-GitHub Actions auto-deploys on every push to `main` — add `HF_TOKEN` as a GitHub repo secret.
+2. Add the 4 API keys above as Space secrets under Settings
+3. Add `HF_TOKEN` as a GitHub repo secret — CI/CD auto-deploys on every push to `main`
 
 ## License
 
