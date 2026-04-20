@@ -24,57 +24,80 @@ Job hunting is exhausting and repetitive. Senior engineers spend hours:
 
 ## The Solution
 
-3 focused AI agents that collaborate end-to-end:
+3 focused AI agents orchestrated by LangGraph, running partially in parallel:
 
 ```
 User pastes resume + enters search query
         |
         v
-Search + Screen Agent    Fetches jobs via JSearch + Adzuna APIs
-                         Scores each role against your resume (1-10 fit score with reasoning)
+   [PARALLEL EXECUTION]
+   /                    \
+Resume Extractor      Job Fetcher
+(Pydantic schema)     (Tavily + Adzuna APIs)
+   \                    /
+        Converge
         |
         v
-User selects a role they want to apply for
+Hybrid Pre-Filter         Fast keyword heuristics eliminate irrelevant roles
+        |                 before any LLM calls (saves tokens + time)
+        v
+Search + Screen Agent     LLM scores remaining roles vs resume (1-10 + reasoning)
+        |                 Structured output via Pydantic schema
+        v
+User selects a role
         |
         v
-Cover Letter Agent       Writes a personalised cover letter using your resume + the full JD
+Cover Letter Agent        Personalised cover letter using resume + full JD
         |
         v
-ATS Agent                Identifies missing keywords from the JD
-                         Suggests exactly where to add them in your resume
-                         (you decide what to change — no hallucinated edits)
+ATS Agent                 Keyword gap analysis — missing terms + where to add them
+        |                 (user makes the final edits, no hallucinated rewrites)
+        v
+Report Generator          Markdown + PDF summary of results
         |
         v
-Tracker                  Logs the role, fit score, and date to your application pipeline
+Tracker                   Logs role, score, date to JSON application pipeline
 ```
 
-## Why 3 Agents and Not 5
+## Architectural Decisions
 
-The original design had 5 agents including automated resume rewriting. That approach was dropped for two reasons:
+### Why LangGraph over CrewAI
+CrewAI relies on LangChain internals and its API has changed significantly across versions — the same instability that has affected the LangChain ecosystem broadly. LangGraph gives direct control over the state machine, supports parallel execution natively, and has a more stable API surface.
 
-1. Auto-rewriting resume bullets risks hallucinating experience you do not have — a recruiter will catch it
-2. 5 sequential LLM calls on a free-tier API (Groq) is slow and hits rate limits fast on a public deployment
+### Why Parallel Execution
+Resume extraction and job fetching are completely independent. Running them in parallel via LangGraph fan-out/fan-in cuts the total pipeline time roughly in half before the LLM even starts scoring.
 
-The 3-agent design does more with less: job discovery and scoring in a single pass, then cover letter and ATS analysis only for roles the user actually wants to pursue.
+### Why Hybrid Pre-Filtering
+Every LLM call costs time and tokens. A fast keyword check (seniority level, role type, location) eliminates clearly irrelevant listings before the scoring agent sees them. This pattern is used in production job search agents to handle rate limits on free-tier APIs.
+
+### Why Pydantic Schemas for Every Agent Output
+The most common failure mode in multi-agent systems is unpredictable LLM outputs breaking downstream agents. Every agent in HireIQ uses `.with_structured_output()` with a Pydantic model, so outputs are validated and typed before being passed to the next step.
+
+### Why No Automated Resume Rewriting
+Auto-rewriting resume bullets risks hallucinating experience the user does not have. Recruiters catch this. HireIQ does keyword gap analysis instead — it tells you what is missing and where to add it, but you decide what to write.
 
 ## Data Sources
 
 | Source | API | Free Tier | What it provides |
 |--------|-----|-----------|-----------------|
-| JSearch (RapidAPI) | REST | 200 requests/day | Structured jobs from Indeed, LinkedIn, Glassdoor |
-| Adzuna | REST | 200 calls/day | Full job descriptions, salary data |
+| Tavily | REST | 1,000 searches/month | Real-time job search across all major boards |
+| Adzuna | REST | 200 calls/day | Full job descriptions with salary data |
 
-No scraping. Both are legitimate APIs with structured data including full job descriptions — which is what the cover letter and ATS agents need to work well.
+Tavily is purpose-built for AI agents and returns clean, structured results optimised for LLM consumption — no HTML scraping, no rate-limit evasion, no ToS violations.
 
 ## Tech Stack
 
 | Component | Technology |
 |-----------|-----------|
 | Agent orchestration | LangGraph |
+| State management | GraphState TypedDict + Pydantic schemas |
 | LLM | Groq (LLaMA 3.3 70B) — free |
-| Job search | JSearch API + Adzuna API — free tier |
-| Resume input | Plain text paste (no parsing bugs) |
+| Structured output | `.with_structured_output()` on all agents |
+| Job search | Tavily API + Adzuna API — free tier |
+| Resume input | Plain text paste |
+| Report output | Markdown + PDF (fpdf2) |
 | Persistence | JSON application tracker |
+| Observability | LangSmith (optional tracing) |
 | UI | Gradio |
 | Deployment | Hugging Face Spaces + GitHub Actions |
 
@@ -82,20 +105,25 @@ No scraping. Both are legitimate APIs with structured data including full job de
 
 ```
 HireIQ/
-├── app.py                      # Gradio UI + LangGraph pipeline entry point
+├── app.py                        # Gradio UI entry point
+├── graph/
+│   ├── state.py                  # GraphState TypedDict + all Pydantic output schemas
+│   └── pipeline.py               # LangGraph workflow: nodes, edges, parallel fan-out
 ├── agents/
-│   ├── search_screen_agent.py  # Fetches jobs from APIs, scores vs resume
-│   ├── cover_letter_agent.py   # Generates personalised cover letter
-│   └── ats_agent.py            # Keyword gap analysis vs resume
+│   ├── search_screen_agent.py    # Scores jobs vs resume with structured output
+│   ├── cover_letter_agent.py     # Generates personalised cover letter
+│   └── ats_agent.py              # Keyword gap analysis vs resume
 ├── tools/
-│   ├── jsearch_tool.py         # JSearch API wrapper
-│   ├── adzuna_tool.py          # Adzuna API wrapper
-│   └── tracker.py              # JSON application pipeline logger
-├── outputs/                    # Generated cover letters + tracker JSON
+│   ├── tavily_tool.py            # Tavily API wrapper for job search
+│   ├── adzuna_tool.py            # Adzuna API wrapper
+│   ├── pre_filter.py             # Fast keyword heuristics before LLM scoring
+│   ├── report_generator.py       # Markdown + PDF report output (fpdf2)
+│   └── tracker.py                # JSON application pipeline logger
+├── outputs/                      # Generated cover letters, reports, tracker JSON
 ├── requirements.txt
 └── .github/
     └── workflows/
-        └── deploy-hf.yml       # Auto-deploy to HF Spaces on push to main
+        └── deploy-hf.yml         # Auto-deploy to HF Spaces on push to main
 ```
 
 ## Setup
@@ -109,17 +137,26 @@ pip install -r requirements.txt
 Set the following environment variables (or add as HF Space secrets):
 
 ```bash
-GROQ_API_KEY=your_groq_api_key        # console.groq.com — free
-JSEARCH_API_KEY=your_jsearch_key      # rapidapi.com/letscrape-6bfcf/api/jsearch — free tier
-ADZUNA_APP_ID=your_adzuna_app_id      # developer.adzuna.com — free
+GROQ_API_KEY=your_groq_api_key          # console.groq.com — free
+TAVILY_API_KEY=your_tavily_api_key      # app.tavily.com — free 1000/month
+ADZUNA_APP_ID=your_adzuna_app_id        # developer.adzuna.com — free
 ADZUNA_APP_KEY=your_adzuna_app_key
+LANGSMITH_API_KEY=your_langsmith_key    # optional — smith.langchain.com
 ```
 
 ## Deploy to Hugging Face Spaces
 
 1. Create a new Gradio Space at huggingface.co
-2. Add the 4 API keys above as Space secrets under Settings
+2. Add the API keys above as Space secrets under Settings
 3. Add `HF_TOKEN` as a GitHub repo secret — CI/CD auto-deploys on every push to `main`
+
+## Inspired By
+
+Architecture patterns borrowed from:
+- [sergio11/langgraph_jobsearch_assistant](https://github.com/sergio11/langgraph_jobsearch_assistant) — LangGraph state machine + PDF report output
+- [jugallachhwani — Agentic AI Career Assistant](https://medium.com/@jugallachhwani15) — fan-out/fan-in parallelisation + centralised GraphState
+- [vadim.blog — LangGraph Job Pre-Screening](https://vadim.blog/2026/01/25/langgraph-system-deepseek-powered-job-pre-screening-for-worldwide-remote-roles) — hybrid heuristic + LLM pre-filter pattern
+- [kaifkohari10 — AI Job Hunt Agents](https://kaifkohari10.medium.com) — BaseAgent pattern + iterative refinement loops
 
 ## License
 
