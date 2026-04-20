@@ -222,127 +222,129 @@ label span { color: #94a3b8 !important; font-weight: 600 !important; font-size: 
 }
 """
 
-# ── Stub data ─────────────────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
-SAMPLE_JOBS_HTML = """
-<div class="results-wrap">
-
-  <div class="job-card">
+def _job_cards_html(scored_jobs, raw_count, filtered_count):
+    cards = ['<div class="results-wrap">']
+    for job in scored_jobs:
+        sc = "score-high" if job.fit_score >= 8 else "score-mid" if job.fit_score >= 6 else "score-low"
+        salary = f'<span class="salary-tag">{job.salary}</span>' if job.salary else ""
+        cards.append(f"""  <div class="job-card">
     <div class="job-header">
       <div class="job-body">
-        <p class="job-title">Senior Machine Learning Engineer <span class="salary-tag">$180k – $220k</span></p>
-        <p class="job-meta">Stripe &nbsp;·&nbsp; Remote, USA &nbsp;·&nbsp; via LinkedIn</p>
-        <p class="job-reason">Strong Python + ML background matches core requirements. Prior fintech exposure is a plus. Stack alignment with PyTorch and MLflow is excellent.</p>
-        <a class="apply-btn" href="https://stripe.com/jobs" target="_blank">View & Apply →</a>
+        <p class="job-title">{job.title} &nbsp; {salary}</p>
+        <p class="job-meta">{job.company} &nbsp;·&nbsp; {job.location}</p>
+        <p class="job-reason">{job.reasoning}</p>
+        <a class="apply-btn" href="{job.url}" target="_blank">View &amp; Apply →</a>
       </div>
-      <div class="score-badge score-high">9</div>
+      <div class="score-badge {sc}">{job.fit_score}</div>
     </div>
-  </div>
+  </div>""")
+    cards.append('</div>')
+    return "\n".join(cards)
 
-  <div class="job-card">
-    <div class="job-header">
-      <div class="job-body">
-        <p class="job-title">ML Engineer — Recommendations @ Airbnb</p>
-        <p class="job-meta">Airbnb &nbsp;·&nbsp; San Francisco, CA &nbsp;·&nbsp; via Indeed</p>
-        <p class="job-reason">Solid ranking and recommendation systems experience. Missing Spark at scale — worth adding to resume before applying.</p>
-        <a class="apply-btn" href="https://airbnb.com/careers" target="_blank">View & Apply →</a>
-      </div>
-      <div class="score-badge score-high">8</div>
-    </div>
-  </div>
 
-  <div class="job-card">
-    <div class="job-header">
-      <div class="job-body">
-        <p class="job-title">Staff Data Scientist <span class="salary-tag">$160k – $200k</span></p>
-        <p class="job-meta">Notion &nbsp;·&nbsp; Remote &nbsp;·&nbsp; via Wellfound</p>
-        <p class="job-reason">Good fit for product analytics focus. LLM work is a strong differentiator here.</p>
-        <a class="apply-btn" href="https://notion.so/careers" target="_blank">View & Apply →</a>
-      </div>
-      <div class="score-badge score-mid">7</div>
-    </div>
-  </div>
+def _profile_html(profile, raw_count, filtered_count, scored_count):
+    skills = " · ".join(profile.skills[:6])
+    return f"""<div class="info-strip">
+  <div class="info-pill"><strong>Seniority</strong>{profile.seniority.title()}</div>
+  <div class="info-pill"><strong>Experience</strong>{profile.experience_years} yrs</div>
+  <div class="info-pill"><strong>Top Skills</strong>{skills}</div>
+  <div class="info-pill"><strong>Pipeline</strong>{raw_count} fetched → {filtered_count} filtered → {scored_count} scored</div>
+</div>"""
 
-  <div class="job-card">
-    <div class="job-header">
-      <div class="job-body">
-        <p class="job-title">Machine Learning Engineer — Platform</p>
-        <p class="job-meta">Figma &nbsp;·&nbsp; Remote, USA &nbsp;·&nbsp; via Greenhouse</p>
-        <p class="job-reason">Platform ML role — infrastructure heavy. Kubernetes experience gap may be a concern.</p>
-        <a class="apply-btn" href="https://figma.com/careers" target="_blank">View & Apply →</a>
-      </div>
-      <div class="score-badge score-mid">6</div>
-    </div>
-  </div>
 
-</div>
-"""
-
-PROFILE_HTML = """
-<div class="info-strip">
-  <div class="info-pill"><strong>Seniority</strong>Senior</div>
-  <div class="info-pill"><strong>Experience</strong>6 years</div>
-  <div class="info-pill"><strong>Top Skills</strong>Python · PyTorch · SQL · MLflow · LLMs</div>
-  <div class="info-pill"><strong>Pipeline</strong>42 fetched → 18 filtered → 10 scored</div>
-</div>
-"""
-
-SAMPLE_COVER = """Dear Hiring Team at Stripe,
-
-I'm excited to apply for the Senior Machine Learning Engineer role. Having spent six years building and shipping ML systems — from recommendation engines to real-time fraud models — I'm drawn to Stripe's commitment to using ML as a core product differentiator rather than an afterthought.
-
-At my last role, I led a team that reduced model inference latency by 40% while improving precision by 12 points. I've worked extensively with PyTorch, MLflow, and distributed training on GPU clusters, which aligns directly with your infrastructure requirements.
-
-I'd welcome the opportunity to discuss how my background fits the team's goals.
-
-Best regards,
-Anant Tripathi"""
-
-SAMPLE_ATS_HTML = """
-<div class="ats-section">
+def _ats_html(ats):
+    missing = " ".join(f'<span class="keyword-chip chip-missing">{k}</span>' for k in ats.missing_keywords)
+    present = " ".join(f'<span class="keyword-chip chip-present">{k}</span>' for k in ats.present_keywords)
+    suggestions = "\n".join(f"<li>{s}</li>" for s in ats.suggestions)
+    return f"""<div class="ats-section">
   <p class="section-label">Missing — add these to your resume</p>
-  <span class="keyword-chip chip-missing">Kafka</span>
-  <span class="keyword-chip chip-missing">Flink</span>
-  <span class="keyword-chip chip-missing">feature store</span>
-  <span class="keyword-chip chip-missing">A/B testing at scale</span>
-  <span class="keyword-chip chip-missing">model monitoring</span>
-
-  <p class="section-label" style="margin-top:16px">Already present — you're covered</p>
-  <span class="keyword-chip chip-present">Python</span>
-  <span class="keyword-chip chip-present">PyTorch</span>
-  <span class="keyword-chip chip-present">MLflow</span>
-  <span class="keyword-chip chip-present">SQL</span>
-  <span class="keyword-chip chip-present">distributed training</span>
-
-  <p class="section-label" style="margin-top:16px">Where to add missing keywords</p>
-  <ul style="font-size:0.9rem; color:#94a3b8; line-height:1.8; padding-left:18px; margin:0;">
-    <li>Add <strong>Kafka</strong> and <strong>Flink</strong> to your data pipeline bullet at Company X</li>
-    <li>Mention <strong>A/B testing at scale</strong> in your recommendation system project</li>
-    <li>Add <strong>feature store</strong> to your ML infrastructure section</li>
-    <li>Add a one-liner on <strong>model monitoring</strong> to your MLOps experience</li>
+  {missing}
+  <p class="section-label" style="margin-top:16px">Already present</p>
+  {present}
+  <p class="section-label" style="margin-top:16px">Where to add them</p>
+  <ul style="font-size:0.9rem;color:#94a3b8;line-height:1.8;padding-left:18px;margin:0;">
+    {suggestions}
   </ul>
-</div>
-"""
+</div>"""
 
-# ── Stub handlers ─────────────────────────────────────────────────────────────
+
+# ── Real handlers ─────────────────────────────────────────────────────────────
 
 def run_search(resume_text, search_query, progress=gr.Progress()):
     if not resume_text.strip():
-        return "<p style='color:#991b1b;padding:16px'>Please paste your resume.</p>", ""
+        return "<p style='color:#f87171;padding:16px'>Please upload or paste your resume.</p>", ""
     if not search_query.strip():
-        return "<p style='color:#991b1b;padding:16px'>Please enter a search query.</p>", ""
-    progress(0.25, desc="Parsing resume...")
-    progress(0.55, desc="Fetching live jobs...")
-    progress(0.85, desc="Scoring with LLM...")
-    return SAMPLE_JOBS_HTML, PROFILE_HTML
+        return "<p style='color:#f87171;padding:16px'>Please enter a search query.</p>", ""
+
+    from graph.pipeline import search_graph
+    from graph.state import GraphState
+
+    state: GraphState = {
+        "resume_text": resume_text, "search_query": search_query,
+        "resume_profile": None, "raw_jobs": None, "filtered_jobs": None,
+        "scored_jobs": None, "selected_job": None, "cover_letter": None,
+        "ats_analysis": None, "report_path": None, "error": None,
+    }
+
+    try:
+        progress(0.15, desc="Parsing resume + fetching jobs in parallel...")
+        result = search_graph.invoke(state)
+        progress(0.95, desc="Done!")
+    except Exception as e:
+        return f"<p style='color:#f87171;padding:16px'>Error: {e}</p>", ""
+
+    scored = result.get("scored_jobs") or []
+    profile = result.get("resume_profile")
+    raw_count      = len(result.get("raw_jobs")      or [])
+    filtered_count = len(result.get("filtered_jobs") or [])
+
+    if not scored:
+        return "<div class='ats-empty'>No matching jobs found. Try a broader search query.</div>", ""
+
+    return (
+        _job_cards_html(scored, raw_count, filtered_count),
+        _profile_html(profile, raw_count, filtered_count, len(scored)) if profile else "",
+    )
 
 
 def run_cover_ats(resume_text, job_title, company, job_description, url, progress=gr.Progress()):
-    if not resume_text.strip() or not job_title.strip():
-        return "Missing resume or job title.", ""
-    progress(0.4, desc="Writing cover letter...")
-    progress(0.8, desc="Running ATS analysis...")
-    return SAMPLE_COVER, SAMPLE_ATS_HTML
+    if not resume_text.strip():
+        return "Please upload or paste your resume.", ""
+    if not job_title.strip():
+        return "Please enter a job title.", ""
+
+    from agents.search_screen_agent import extract_resume
+    from agents.cover_letter_agent import generate_cover_letter
+    from agents.ats_agent import run_ats_analysis
+    from tools.tracker import log_application
+    from graph.state import ScoredJob
+
+    try:
+        progress(0.2, desc="Parsing resume...")
+        profile = extract_resume(resume_text)
+
+        job = ScoredJob(
+            title=job_title, company=company or "the company",
+            location="", url=url or "",
+            fit_score=8,
+            reasoning=job_description[:600] if job_description else f"{job_title} at {company}",
+        )
+
+        progress(0.5, desc="Writing cover letter...")
+        letter = generate_cover_letter(job, profile)
+
+        progress(0.8, desc="Running ATS analysis...")
+        ats = run_ats_analysis(job, profile)
+
+        log_application(job)
+        progress(1.0, desc="Done!")
+
+    except Exception as e:
+        return f"Error: {e}", ""
+
+    return letter.content, _ats_html(ats)
 
 
 def load_tracker():
